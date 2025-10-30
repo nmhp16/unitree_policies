@@ -49,6 +49,9 @@ pip3 install -e .
 ```
 git clone https://github.com/unitreerobotics/unitree_mujoco.git
 pip install mujoco pygame
+
+# Replace config.py and unitree_sdk2py_bridge.py for unitree_mujoco
+# Change to ENABLE_ELASTIC_BAND = False in config,py to allow ground contact
 ```
 
 **Run simulation**
