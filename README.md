@@ -59,3 +59,20 @@ pip install mujoco pygame
 cd ~/unitree_mujoco/simulate_python
 python unitree_mujoco.py
 ```
+
+**Train**
+```
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Test it works
+cd scripts
+python test_gymnasium_env.py
+
+# Train quick test
+python train_gymnasium.py --total-timesteps 50000 --n-envs 4
+```
