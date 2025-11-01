@@ -70,7 +70,7 @@ class G1GymnasiumEnv(gym.Env):
         """Get path to G1 MuJoCo XML file"""
         current_file = Path(__file__).resolve()
         repo_root = current_file.parents[2]  # Go up to project root
-        xml_path = repo_root / "robots" / "g1_description" / "g1_12dof.xml"
+        xml_path = repo_root / "robots" / "g1_description" / "g1_description" / "g1_12dof.xml"
         
         if not xml_path.exists():
             raise FileNotFoundError(f"G1 model not found at {xml_path}")
