@@ -9,13 +9,33 @@ robot:
   
 environment:
   max_episode_steps: 1000
-  decimation: 10  # Control at 50Hz (500Hz physics / 10)
+  decimation: 4  # Control at 50Hz (200Hz physics / 4)
   
   # Command ranges (what speeds to train on)
   command:
     lin_vel_x: [0.0, 1.5]  # Forward speed (m/s)
     lin_vel_y: [0.0, 0.0]  # No lateral movement
     ang_vel_z: [0.0, 0.0]  # No turning
+  
+  # Domain randomization (for robust policies)
+  domain_rand:
+    randomize_friction: true
+    friction_range: [0.5, 1.25]
+    randomize_mass: false
+    mass_range: [-1.0, 1.0]
+    push_robots: true
+    push_interval_s: 15
+    max_push_vel_xy: 1.0
+  
+  # Observation noise (simulates sensor noise)
+  noise:
+    add_noise: true
+    noise_level: 1.0
+    noise_scales:
+      dof_pos: 0.01
+      dof_vel: 1.5
+      ang_vel: 0.2
+      gravity: 0.05
   
   # Observation space configuration
   observations:
@@ -38,28 +58,28 @@ environment:
     left_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
     right_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
 
-# Reward function weights
+# Reward function weights (based on legged_gym reward structure)
 rewards:
   # Primary objectives
-  tracking_lin_vel: 1.0      # Track forward velocity command
+  tracking_lin_vel: 1.0      # Track forward velocity command (exponential reward)
   tracking_ang_vel: 0.5      # Track angular velocity (0 for straight walk)
   
-  # Stability
-  orientation: 1.0           # Stay upright
-  base_height: 10.0          # Maintain target height (0.78m)
+  # Penalties (negative weights)
+  lin_vel_z: -2.0            # Penalize vertical movement (bouncing)
+  ang_vel_xy: -0.05          # Penalize roll/pitch rotation (wobbling)
+  dof_acc: -2.5e-7           # Penalize joint accelerations (smoothness)
+  action_rate: -0.01         # Penalize rapid action changes (smoothness)
+  collision: -1.0            # Penalize non-foot body contacts (falling)
+  torques: -0.00001          # Penalize high torques (energy efficiency)
   
-  # Efficiency
-  dof_vel: 0.001            # Penalize fast joint movements
-  dof_acc: 0.0005           # Penalize joint accelerations
-  action_rate: 0.01         # Penalize rapid action changes
+  # Gait rewards
+  feet_air_time: 1.0         # Reward long steps (natural gait)
   
-  # Constraints
-  torques: 0.0001           # Penalize large torques
-  ang_vel_xy: 0.05          # Don't wobble sideways
-  lin_vel_z: 2.0            # Don't bounce up/down
-  
-  # Bonus
-  alive: 0.15               # Reward for staying alive
+  # Disabled rewards (can be enabled if needed)
+  # orientation: 0.0         # Stay upright (disabled in base config)
+  # base_height: 0.0         # Maintain target height (disabled in base config)
+  # dof_vel: 0.0             # Penalize joint velocities (disabled in base config)
+  # stand_still: 0.0         # Penalize motion at zero command (disabled)
 
 # Training hyperparameters
 training:
@@ -92,6 +112,8 @@ training:
 
 # Termination conditions
 termination:
-  min_height: 0.3      # Below this height = fall
-  max_tilt: 70         # Degrees - tilted too far
+  # Based on legged_robot.py check_termination()
+  max_roll: 0.8        # Radians (~46 degrees)
+  max_pitch: 1.0       # Radians (~57 degrees)
+  collision: true      # Terminate on non-foot body contacts
   timeout_steps: 1000  # Max episode length

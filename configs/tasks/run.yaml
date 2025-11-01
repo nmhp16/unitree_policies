@@ -9,54 +9,48 @@ robot:
   
 environment:
   max_episode_steps: 800  # Shorter - running is more unstable
-  decimation: 10
+  decimation: 4  # 50Hz control (200Hz physics / 4)
   
   command:
     lin_vel_x: [1.5, 3.5]   # Fast forward speeds only
     lin_vel_y: [0.0, 0.0]   # Straight running
     ang_vel_z: [0.0, 0.0]
   
-  observations:
-    - angular_velocity
-    - projected_gravity
-    - commands
-    - dof_pos
-    - dof_vel
-    - last_actions
-    - gait_phase       # Important for running rhythm
-    - foot_contacts    # Need to know which foot is down
+  # Domain randomization
+  domain_rand:
+    randomize_friction: true
+    friction_range: [0.5, 1.25]
+    randomize_mass: false
+    mass_range: [-1.0, 1.0]
+    push_robots: true
+    push_interval_s: 10  # More frequent for running
+    max_push_vel_xy: 1.2
   
-  control:
-    # Higher gains for faster responses
-    kp: [120, 120, 120, 180, 50, 50, 120, 120, 120, 180, 50, 50]
-    kd: [3, 3, 3, 5, 3, 3, 3, 3, 3, 5, 3, 3]
-  
-  default_joint_angles:
-    left_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
-    right_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
-  
-  # Running has different gait
-  gait_period: 0.5  # Faster cycle than walking (0.8s)
+  # Observation noise
+  noise:
+    add_noise: true
+    noise_level: 1.0
+    noise_scales:
+      dof_pos: 0.01
+      dof_vel: 1.5
+      ang_vel: 0.2
+      gravity: 0.05
 
 rewards:
+  # Primary objectives
   tracking_lin_vel: 2.0      # High reward for speed!
   tracking_ang_vel: 0.5
   
-  orientation: 1.5           # Very important - running is unstable
-  base_height: 8.0           # Allow slight height variation
+  # Penalties (allow more dynamic motion for running)
+  lin_vel_z: -1.0            # Some bouncing is natural for running
+  ang_vel_xy: -0.1           # More lenient wobbling
+  dof_acc: -1.0e-7           # Allow faster accelerations
+  action_rate: -0.005        # Allow more dynamic actions
+  collision: -1.0
+  torques: -0.00001
   
-  dof_vel: 0.0005           # Allow faster joint movements
-  dof_acc: 0.0002           # Less penalty for acceleration
-  action_rate: 0.005        # Allow more dynamic actions
-  
-  torques: 0.0001
-  ang_vel_xy: 0.1
-  lin_vel_z: 1.0            # Some bouncing is natural
-  
-  # Energy efficiency less important than speed
-  energy_penalty: 0.00005
-  
-  alive: 0.2                # Higher bonus for staying up while running
+  # Gait rewards
+  feet_air_time: 1.5         # Reward longer flight phases (running)
 
 training:
   total_timesteps: 6000000
@@ -84,6 +78,7 @@ training:
     activation: "elu"
 
 termination:
-  min_height: 0.25          # Can be lower during running
-  max_tilt: 60              # More lenient - running has more tilt
+  max_roll: 0.9             # More lenient for running dynamics
+  max_pitch: 1.2            # Running has more pitch variation
+  collision: true
   timeout_steps: 800

@@ -1,6 +1,6 @@
 """
-Train G1 robot using Stable-Baselines3 on Mac
-No Isaac Gym required - uses MuJoCo + Gymnasium
+Train G1 robot using Gymnasium + MuJoCo + Stable-Baselines3
+Portable training script that works on any platform
 """
 
 import argparse
@@ -14,8 +14,8 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.utils import set_random_seed
 
-# Add path to import without triggering Isaac Gym dependencies
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'envs', 'g1'))
+# Add path to import custom environment
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from g1_gymnasium_env import G1GymnasiumEnv
 
 
@@ -66,7 +66,7 @@ def train(args):
     
     print("[OK] Environments created\n")
     
-    # Configure PPO (parameters match Isaac Gym config from g1_config.py)
+    # Configure PPO (parameters from legged_gym config)
     print("Creating PPO agent...")
     model = PPO(
         "MlpPolicy",
