@@ -64,7 +64,7 @@ def train(args):
     eval_env = SubprocVecEnv([make_env(args.n_envs, args.seed)])
     eval_env = VecMonitor(eval_env, os.path.join(log_dir, "eval"))
     
-    print("✓ Environments created\n")
+    print("[OK] Environments created\n")
     
     # Configure PPO (parameters match Isaac Gym config from g1_config.py)
     print("Creating PPO agent...")
@@ -90,7 +90,7 @@ def train(args):
         }
     )
     
-    print("✓ PPO agent created\n")
+    print("[OK] PPO agent created\n")
     
     # Callbacks for checkpointing and evaluation
     checkpoint_callback = CheckpointCallback(
@@ -130,7 +130,7 @@ def train(args):
     # Save final model
     final_model_path = os.path.join(log_dir, "final_model")
     model.save(final_model_path)
-    print(f"\n✓ Final model saved to: {final_model_path}")
+    print(f"\n[OK] Final model saved to: {final_model_path}")
     
     # Convert to PyTorch JIT for deployment
     print("\nConverting to deployment format...")
@@ -153,13 +153,13 @@ def train(args):
         
         export_path = os.path.join(log_dir, "policy_1.pt")
         traced.save(export_path)
-        print(f"✓ Deployment policy saved to: {export_path}")
+        print(f"[OK] Deployment policy saved to: {export_path}")
         print(f"\nTo test in MuJoCo:")
         print(f"  1. Edit deploy/deploy_mujoco/configs/g1.yaml")
         print(f"  2. Set policy_path to: {export_path}")
         print(f"  3. Run: python deploy/deploy_mujoco/deploy_mujoco.py g1.yaml")
     except Exception as e:
-        print(f"⚠ Could not export deployment format: {e}")
+        print(f"[WARN] Could not export deployment format: {e}")
         print("You can still use the .zip model with Stable-Baselines3")
     
     env.close()

@@ -23,22 +23,22 @@ def test_environment():
     print("\n1. Creating environment...")
     try:
         env = G1GymnasiumEnv()
-        print("   ✓ Environment created successfully")
+        print("   [OK] Environment created successfully")
         print(f"   - Observation space: {env.observation_space.shape}")
         print(f"   - Action space: {env.action_space.shape}")
     except Exception as e:
-        print(f"   ✗ Failed to create environment: {e}")
+        print(f"   [ERROR] Failed to create environment: {e}")
         return False
     
     # Test reset
     print("\n2. Testing reset...")
     try:
         obs, info = env.reset(seed=42)
-        print("   ✓ Reset successful")
+        print("   [OK] Reset successful")
         print(f"   - Observation shape: {obs.shape}")
         print(f"   - Observation sample: {obs[:5]}")
     except Exception as e:
-        print(f"   ✗ Reset failed: {e}")
+        print(f"   [ERROR] Reset failed: {e}")
         return False
     
     # Test multiple steps
@@ -51,14 +51,14 @@ def test_environment():
             total_reward += reward
             
             if terminated:
-                print(f"   ! Episode terminated at step {i+1}")
+                print(f"   [WARN] Episode terminated at step {i+1}")
                 break
         
-        print(f"   ✓ Completed {i+1} steps")
+        print(f"   [OK] Completed {i+1} steps")
         print(f"   - Total reward: {total_reward:.2f}")
         print(f"   - Base height: {info.get('base_height', 'N/A'):.3f}m")
     except Exception as e:
-        print(f"   ✗ Step failed: {e}")
+        print(f"   [ERROR] Step failed: {e}")
         return False
     
     # Test full episode
@@ -77,13 +77,13 @@ def test_environment():
             if terminated or truncated:
                 break
         
-        print(f"   ✓ Episode completed")
+        print(f"   [OK] Episode completed")
         print(f"   - Steps: {steps+1}/{env.max_episode_steps}")
         print(f"   - Total reward: {episode_reward:.2f}")
         print(f"   - Average reward: {episode_reward/(steps+1):.3f}")
         print(f"   - Terminated: {terminated}, Truncated: {truncated}")
     except Exception as e:
-        print(f"   ✗ Episode failed: {e}")
+        print(f"   [ERROR] Episode failed: {e}")
         return False
     
     # Test observation components
@@ -99,7 +99,7 @@ def test_environment():
         actions = obs[33:45]
         phase = obs[45:47]
         
-        print(f"   ✓ Observation components:")
+        print(f"   [OK] Observation components:")
         print(f"   - Angular velocity: {ang_vel}")
         print(f"   - Projected gravity: {gravity}")
         print(f"   - Commands: {commands}")
@@ -108,14 +108,14 @@ def test_environment():
         print(f"   - Last actions: shape {actions.shape}")
         print(f"   - Phase (sin, cos): {phase}")
     except Exception as e:
-        print(f"   ✗ Observation structure check failed: {e}")
+        print(f"   [ERROR] Observation structure check failed: {e}")
         return False
     
     # Clean up
     env.close()
     
     print("\n" + "=" * 60)
-    print("✓ All tests passed!")
+    print("[OK] All tests passed!")
     print("=" * 60)
     print("\nYou can now:")
     print("  1. Train: python train_gymnasium_local.py")

@@ -48,7 +48,7 @@ def convert_model(model_path: str, output_path: str = None):
     dummy_obs = torch.randn(1, 47)  # G1 has 47-dim observation
     with torch.no_grad():
         output = deploy_policy(dummy_obs)
-    print(f"✓ Policy works! Output shape: {output.shape}")
+    print(f"[OK] Policy works! Output shape: {output.shape}")
     
     # Trace for deployment
     print("Tracing model...")
@@ -62,14 +62,14 @@ def convert_model(model_path: str, output_path: str = None):
             output_path = model_path + '_policy.pt'
     
     traced.save(output_path)
-    print(f"✓ Deployment model saved to: {output_path}")
+    print(f"[OK] Deployment model saved to: {output_path}")
     
     # Verify the saved model works
     print("Verifying saved model...")
     loaded = torch.jit.load(output_path)
     with torch.no_grad():
         test_output = loaded(dummy_obs)
-    print(f"✓ Loaded model works! Output shape: {test_output.shape}")
+    print(f"[OK] Loaded model works! Output shape: {test_output.shape}")
     
     return output_path
 
