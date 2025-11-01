@@ -1,4 +1,3 @@
-# 
 # Use your trained model!
 policy_path: "{LEGGED_GYM_ROOT_DIR}/logs/g1_gymnasium/Nov01_02-20-10/final_model_policy.pt"
 # Or use pre-trained: "{LEGGED_GYM_ROOT_DIR}/deploy/pre_train/g1/motion.pt"

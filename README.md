@@ -74,5 +74,19 @@ cd scripts
 python test_gymnasium_env.py
 
 # Train quick test
-python train_gymnasium.py --total-timesteps 50000 --n-envs 4
+python train_task.py walk_forward --quick-test
+
+# Then full training
+python train_task.py walk_forward --mark-as-best
+```
+
+**Evaluate**
+```
+# No render
+python3 evaluate_policy.py ../models/walk_forward/v3_20251101_033608/final_model.zip --n-episodes 3 --no-render
+
+# With render
+python3 evaluate_policy.py latest \
+    --n-episodes 5 \
+    --keep-open
 ```

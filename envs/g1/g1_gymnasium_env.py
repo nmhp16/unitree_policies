@@ -6,6 +6,7 @@ This allows training on Mac without Isaac Gym
 import gymnasium as gym
 import numpy as np
 import mujoco
+import mujoco.viewer
 import os
 from pathlib import Path
 from typing import Optional, Tuple
@@ -266,8 +267,11 @@ class G1GymnasiumEnv(gym.Env):
         """Render the environment"""
         if self.render_mode == "human":
             if self.viewer is None:
+                # Create passive viewer
                 self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
+            # Sync viewer with current state
             self.viewer.sync()
+                
         elif self.render_mode == "rgb_array":
             # TODO: Implement offscreen rendering if needed
             pass
