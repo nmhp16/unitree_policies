@@ -1,0 +1,89 @@
+# Running Task Configuration
+
+task:
+  name: "run"
+  description: "Fast running - higher speeds than walking"
+  
+robot:
+  model: "g1_12dof"
+  
+environment:
+  max_episode_steps: 800  # Shorter - running is more unstable
+  decimation: 10
+  
+  command:
+    lin_vel_x: [1.5, 3.5]   # Fast forward speeds only
+    lin_vel_y: [0.0, 0.0]   # Straight running
+    ang_vel_z: [0.0, 0.0]
+  
+  observations:
+    - angular_velocity
+    - projected_gravity
+    - commands
+    - dof_pos
+    - dof_vel
+    - last_actions
+    - gait_phase       # Important for running rhythm
+    - foot_contacts    # Need to know which foot is down
+  
+  control:
+    # Higher gains for faster responses
+    kp: [120, 120, 120, 180, 50, 50, 120, 120, 120, 180, 50, 50]
+    kd: [3, 3, 3, 5, 3, 3, 3, 3, 3, 5, 3, 3]
+  
+  default_joint_angles:
+    left_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
+    right_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
+  
+  # Running has different gait
+  gait_period: 0.5  # Faster cycle than walking (0.8s)
+
+rewards:
+  tracking_lin_vel: 2.0      # High reward for speed!
+  tracking_ang_vel: 0.5
+  
+  orientation: 1.5           # Very important - running is unstable
+  base_height: 8.0           # Allow slight height variation
+  
+  dof_vel: 0.0005           # Allow faster joint movements
+  dof_acc: 0.0002           # Less penalty for acceleration
+  action_rate: 0.005        # Allow more dynamic actions
+  
+  torques: 0.0001
+  ang_vel_xy: 0.1
+  lin_vel_z: 1.0            # Some bouncing is natural
+  
+  # Energy efficiency less important than speed
+  energy_penalty: 0.00005
+  
+  alive: 0.2                # Higher bonus for staying up while running
+
+training:
+  total_timesteps: 6000000
+  n_envs: 8
+  
+  learning_rate: 0.0002     # Slightly lower for stability
+  n_steps: 24
+  batch_size: 192
+  n_epochs: 5
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.015           # More exploration for dynamic gaits
+  vf_coef: 1.0
+  max_grad_norm: 1.0
+  
+  save_freq: 100000
+  eval_freq: 50000
+  
+  policy:
+    type: "MlpPolicy"
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+    activation: "elu"
+
+termination:
+  min_height: 0.25          # Can be lower during running
+  max_tilt: 60              # More lenient - running has more tilt
+  timeout_steps: 800

@@ -1,0 +1,97 @@
+# Walking Forward Task Configuration
+
+task:
+  name: "walk_forward"
+  description: "Train robot to walk forward at commanded speeds"
+  
+robot:
+  model: "g1_12dof"  # Which robot variant to use
+  
+environment:
+  max_episode_steps: 1000
+  decimation: 10  # Control at 50Hz (500Hz physics / 10)
+  
+  # Command ranges (what speeds to train on)
+  command:
+    lin_vel_x: [0.0, 1.5]  # Forward speed (m/s)
+    lin_vel_y: [0.0, 0.0]  # No lateral movement
+    ang_vel_z: [0.0, 0.0]  # No turning
+  
+  # Observation space configuration
+  observations:
+    - angular_velocity       # 3D
+    - projected_gravity      # 3D
+    - commands              # 3D
+    - dof_pos               # 12D
+    - dof_vel               # 12D
+    - last_actions          # 12D
+    - gait_phase            # 2D (sin, cos)
+    # Total: 47D
+  
+  # PD controller gains
+  control:
+    kp: [100, 100, 100, 150, 40, 40, 100, 100, 100, 150, 40, 40]
+    kd: [2, 2, 2, 4, 2, 2, 2, 2, 2, 4, 2, 2]
+  
+  # Default joint positions (standing pose)
+  default_joint_angles:
+    left_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
+    right_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
+
+# Reward function weights
+rewards:
+  # Primary objectives
+  tracking_lin_vel: 1.0      # Track forward velocity command
+  tracking_ang_vel: 0.5      # Track angular velocity (0 for straight walk)
+  
+  # Stability
+  orientation: 1.0           # Stay upright
+  base_height: 10.0          # Maintain target height (0.78m)
+  
+  # Efficiency
+  dof_vel: 0.001            # Penalize fast joint movements
+  dof_acc: 0.0005           # Penalize joint accelerations
+  action_rate: 0.01         # Penalize rapid action changes
+  
+  # Constraints
+  torques: 0.0001           # Penalize large torques
+  ang_vel_xy: 0.05          # Don't wobble sideways
+  lin_vel_z: 2.0            # Don't bounce up/down
+  
+  # Bonus
+  alive: 0.15               # Reward for staying alive
+
+# Training hyperparameters
+training:
+  total_timesteps: 5000000
+  n_envs: 8
+  
+  # PPO settings
+  learning_rate: 0.0003
+  n_steps: 24
+  batch_size: 192  # 24 * 8
+  n_epochs: 5
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 1.0
+  max_grad_norm: 1.0
+  
+  # Callbacks
+  save_freq: 100000
+  eval_freq: 50000
+  
+  # Network architecture
+  policy:
+    type: "MlpPolicy"
+    net_arch:
+      pi: [32, 32]  # Actor
+      vf: [32, 32]  # Critic
+    activation: "elu"
+
+# Termination conditions
+termination:
+  min_height: 0.3      # Below this height = fall
+  max_tilt: 70         # Degrees - tilted too far
+  timeout_steps: 1000  # Max episode length

@@ -1,0 +1,83 @@
+# Omnidirectional Walking Task Configuration
+
+task:
+  name: "walk_omnidirectional"
+  description: "Walk in any direction - forward, backward, sideways, and turning"
+  
+robot:
+  model: "g1_12dof"
+  
+environment:
+  max_episode_steps: 1000
+  decimation: 10
+  
+  # Full range of movement commands
+  command:
+    lin_vel_x: [-1.0, 1.5]   # Forward/backward
+    lin_vel_y: [-0.8, 0.8]   # Left/right strafing
+    ang_vel_z: [-1.0, 1.0]   # Turning
+  
+  observations:
+    - angular_velocity
+    - projected_gravity
+    - commands
+    - dof_pos
+    - dof_vel
+    - last_actions
+    - gait_phase
+  
+  control:
+    kp: [100, 100, 100, 150, 40, 40, 100, 100, 100, 150, 40, 40]
+    kd: [2, 2, 2, 4, 2, 2, 2, 2, 2, 4, 2, 2]
+  
+  default_joint_angles:
+    left_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
+    right_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
+
+rewards:
+  # Track all velocity components
+  tracking_lin_vel_x: 1.0
+  tracking_lin_vel_y: 0.8    # Slightly lower weight for lateral
+  tracking_ang_vel: 0.6
+  
+  orientation: 1.0
+  base_height: 10.0
+  
+  dof_vel: 0.001
+  action_rate: 0.01
+  
+  torques: 0.0001
+  ang_vel_xy: 0.05
+  lin_vel_z: 2.0
+  
+  alive: 0.15
+
+training:
+  total_timesteps: 8000000   # More complex task needs more training
+  n_envs: 8
+  
+  learning_rate: 0.0003
+  n_steps: 24
+  batch_size: 192
+  n_epochs: 5
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 1.0
+  max_grad_norm: 1.0
+  
+  save_freq: 100000
+  eval_freq: 50000
+  
+  policy:
+    type: "MlpPolicy"
+    net_arch:
+      pi: [64, 64]  # Slightly larger for complex movements
+      vf: [64, 64]
+    activation: "elu"
+
+termination:
+  min_height: 0.3
+  max_tilt: 70
+  timeout_steps: 1000

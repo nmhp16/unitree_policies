@@ -1,0 +1,101 @@
+# Punching Task Configuration
+
+task:
+  name: "punch"
+  description: "Train robot to punch while maintaining balance"
+  
+robot:
+  model: "g1_29dof"  # Need arms for punching!
+  
+environment:
+  max_episode_steps: 500  # Shorter episodes for punching
+  decimation: 10
+  
+  # Command configuration
+  command:
+    target_x: [0.3, 0.8]     # Punch target distance (meters)
+    target_y: [-0.3, 0.3]    # Target lateral offset
+    target_z: [0.5, 1.2]     # Target height
+    punch_hand: ["left", "right", "both"]
+  
+  # Observations (need target info)
+  observations:
+    - angular_velocity       # 3D
+    - projected_gravity      # 3D
+    - target_position        # 3D (relative to robot)
+    - dof_pos               # 29D (full body)
+    - dof_vel               # 29D
+    - last_actions          # 29D
+    - hand_position         # 6D (left and right hand xyz)
+    - punch_phase           # 1D (0=retract, 1=extend)
+    # Total: ~103D
+  
+  control:
+    # Higher gains for legs (stability)
+    kp_legs: [150, 150, 150, 200, 60, 60, 150, 150, 150, 200, 60, 60]
+    kd_legs: [3, 3, 3, 5, 3, 3, 3, 3, 3, 5, 3, 3]
+    # Lower gains for arms (compliance)
+    kp_arms: [50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50]
+    kd_arms: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  
+  default_joint_angles:
+    left_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
+    right_leg: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0]
+    left_arm: [0.0, 0.5, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # Ready position
+    right_arm: [0.0, 0.5, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+# Reward function for punching
+rewards:
+  # Primary objective - reach target
+  hand_to_target: 10.0       # Distance from hand to target
+  punch_speed: 2.0           # Fast punch is good
+  punch_accuracy: 5.0        # Hit target precisely at extension
+  
+  # Maintain balance while punching
+  orientation: 2.0           # Stay upright (more important than walking!)
+  base_height: 5.0           # Don't fall while punching
+  base_stability: 3.0        # Keep feet planted
+  
+  # Efficiency
+  dof_vel: 0.0005           # Less penalty - punching requires speed
+  action_rate: 0.005        # Smooth but allow fast movements
+  
+  # Constraints
+  torques: 0.0002
+  lin_vel_xy: 1.0           # Don't move base much
+  ang_vel_xy: 0.1           # Don't rotate
+  
+  # Bonus
+  punch_success: 10.0       # Large bonus for successful punch
+  alive: 0.1
+
+training:
+  total_timesteps: 3000000   # Punching is simpler than walking
+  n_envs: 8
+  
+  learning_rate: 0.0003
+  n_steps: 32               # Longer rollouts
+  batch_size: 256
+  n_epochs: 5
+  gamma: 0.98               # Slightly shorter horizon
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 1.0
+  max_grad_norm: 1.0
+  
+  save_freq: 50000
+  eval_freq: 25000
+  
+  policy:
+    type: "MlpPolicy"
+    net_arch:
+      pi: [128, 64]         # Larger network for more DOF
+      vf: [128, 64]
+    activation: "elu"
+
+termination:
+  min_height: 0.4           # Can lean slightly forward
+  max_tilt: 45              # Can tilt more while punching
+  timeout_steps: 500
+  punch_complete: true      # End after successful punch

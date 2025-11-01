@@ -3,3 +3,32 @@ __pycache__/
 *.pyo
 venv/
 logs/
+
+# Trained models (too large for git)
+models/*/v*/
+models/*/*.zip
+models/*/*.pt
+
+# But keep config files and README
+!models/**/config.yaml
+!models/**/training_info.json
+!models/**/README.md
+
+# Temporary files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# TensorBoard
+**/tensorboard/
+events.out.tfevents.*
+
+# Checkpoints (can be large)
+**/checkpoints/*.zip
+**/checkpoints/*.pt
