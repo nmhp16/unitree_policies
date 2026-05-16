@@ -1,0 +1,59 @@
+# Spin attack: G1 spins in place at constant angular velocity with both arms
+# extended horizontally (T-pose-ish). Stylized move, fully synthetic — no
+# external motion data needed.
+#
+# The hard part for the policy is not the upper-body pose (trivially held by
+# joint tracking reward) but learning to pivot on flat ground at the commanded
+# yaw rate. This is contact-rich foot manipulation that PPO will discover via
+# the root_rot + root_ang_vel tracking reward. Expect 1-3K iterations before
+# clean spinning emerges; the first few hundred iters will look like the robot
+# falling over while trying to spin.
+#
+# Tuning knobs to try first if convergence stalls:
+#   - seconds_per_revolution: 2.0 is fast (180°/s). Bump to 3.0 if the policy
+#     can't keep up. Spin faster (1.5s) once 2.0s converges.
+#   - shoulder_roll_out: 1.5 ≈ 86° (almost T-pose). Drop to 1.0 if arms cross
+#     or collide with torso during spin (depends on G1 URDF joint signs).
+#   - root_threshold in terminations: spinning robots drift more than walking
+#     ones; bump to 0.8 if early termination is firing too aggressively.
+
+gym_id: Isaac-G1-Tracking-Spin-Attack-v0
+
+motion:
+  # Built-in sentinel — uses MotionReference.synthetic_spin_attack().
+  # To customize seconds_per_revolution / shoulder_roll_out, generate an NPZ
+  # by calling that classmethod directly and save the result, or edit the
+  # defaults in envs/motion_reference.py.
+  path: synthetic_spin_attack
+
+episode:
+  length_s: 8.0           # 4 full revolutions at default speed
+
+scene:
+  num_envs: 4096
+  env_spacing: 3.0        # bigger spacing — spinning robots that drift collide
+
+# Reward weights tuned for spinning:
+#   - track_joint_pos UP: the arms-out pose IS the signature; if the policy
+#     drops its arms the move loses identity even if the spin is good.
+#   - track_root_rot HIGH and track_root_ang_vel HIGH: the spin IS the move.
+#   - track_root_lin_vel ZERO out: robot should stay in place, but penalizing
+#     drift is the job of root_pos tracking + divergence termination, not vel.
+#     (Reference vel is 0 in xy; tracking it doesn't add info.)
+#   - track_joint_vel DOWN: pose is mostly static, joint velocity tracking
+#     just adds noise.
+rewards:
+  track_joint_pos: 4.0
+  track_joint_vel: 0.3
+  track_root_pos: 2.0
+  track_root_rot: 4.0
+  track_root_lin_vel: 0.0
+  track_root_ang_vel: 4.0
+  alive: 0.5
+  action_rate: -0.01
+  torques: -0.000001
+
+terminations:
+  minimum_height: 0.3
+  joint_threshold: 1.2
+  root_threshold: 0.8    # bumped vs walk: spinning has natural drift

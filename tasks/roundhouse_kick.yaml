@@ -1,0 +1,44 @@
+# Roundhouse kick. Single-leg balance + specific mid-motion pose + rapid joint
+# trajectory. Harder than spin_attack — expect 3-8K iterations before the
+# policy looks clean. Common failure mode early in training: robot falls over
+# when it lifts the kicking leg, before figuring out weight transfer.
+
+gym_id: Isaac-G1-Tracking-Roundhouse-Kick-v0
+
+motion:
+  path: synthetic_roundhouse_kick
+
+episode:
+  # Kick is 1.2s; give the episode another 0.3s of buffer so motion_completed
+  # cleanly terminates instead of the time_out termination racing it.
+  length_s: 2.0
+
+scene:
+  num_envs: 4096
+  env_spacing: 2.5
+
+# Reward weights tuned for kicking:
+#   - track_joint_pos VERY HIGH: the kick pose IS the move; any droop kills it
+#   - track_joint_vel HIGH: kick has rapid joint motion; matching the velocity
+#     profile (not just the pose) is what makes it look like a kick vs a slow
+#     reach
+#   - track_root_pos HIGH + root_threshold TIGHT: must stay planted, not get
+#     knocked off-balance
+#   - track_root_ang_vel LOWER: torso shouldn't rotate much; reference is ~0
+#   - alive 1.0 (up from 0.5): single-leg balance is hard; reward staying up
+rewards:
+  track_joint_pos: 5.0
+  track_joint_vel: 1.5
+  track_root_pos: 3.0
+  track_root_rot: 1.5
+  track_root_lin_vel: 1.0
+  track_root_ang_vel: 0.5
+  alive: 1.0
+  action_rate: -0.01
+  torques: -0.000001
+
+terminations:
+  minimum_height: 0.4    # tighter than walk — balance failure on one leg
+                         # is the dominant failure mode, want fast term
+  joint_threshold: 1.0   # tighter — kick pose is precise
+  root_threshold: 0.4    # tighter — robot should stay planted

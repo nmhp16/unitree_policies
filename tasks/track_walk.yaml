@@ -1,0 +1,37 @@
+# Track a walking gait. Default uses the synthetic placeholder; swap in a real
+# NPZ once you've generated one with scripts/convert_smpl_to_npz.py.
+#
+# Run with:
+#   ./scripts/train_rl.sh --task track_walk --num_envs 2048 --headless
+#   ./scripts/play.sh     --task track_walk --checkpoint <path>
+
+gym_id: Isaac-G1-Tracking-Walk-v0
+
+motion:
+  # "synthetic" → use MotionReference.synthetic_walk() (no external data)
+  # otherwise → absolute or repo-relative NPZ path
+  path: synthetic
+
+episode:
+  length_s: 10.0
+
+scene:
+  num_envs: 4096
+  env_spacing: 2.5
+
+# Reward weights — DeepMimic defaults. Increase tracking weights for higher
+# fidelity at the cost of robustness; decrease them to favor balance/recovery.
+rewards:
+  track_joint_pos: 3.0
+  track_joint_vel: 1.0
+  track_root_pos: 2.0
+  track_root_rot: 1.0
+  track_root_lin_vel: 1.0
+  alive: 0.5
+  action_rate: -0.01
+  torques: -0.000001
+
+terminations:
+  minimum_height: 0.3        # fall threshold (m)
+  joint_threshold: 1.2       # RMS joint error (rad) before early term
+  root_threshold: 0.6        # root xyz error (m) before early term
