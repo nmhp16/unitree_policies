@@ -7,5 +7,6 @@ PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 ISAACLAB=${ISAACLAB:-$HOME/IsaacLab}
 
 cd "$PROJECT_ROOT"
-PYTHONPATH="$PROJECT_ROOT/..:${PYTHONPATH:-}" exec "$ISAACLAB/isaaclab.sh" -p \
-    scripts/play.py "$@"
+exec env -u VIRTUAL_ENV -u CONDA_PREFIX \
+    PYTHONPATH="$PROJECT_ROOT/..:${PYTHONPATH:-}" \
+    "$ISAACLAB/isaaclab.sh" -p scripts/play.py "$@"

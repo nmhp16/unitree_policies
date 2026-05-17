@@ -29,6 +29,15 @@ import isaaclab.sim as sim_utils
 from isaaclab_assets.robots.unitree import G1_29DOF_CFG
 
 from . import mdp
+from .motion_reference import _G1_29DOF_NAMES
+
+
+# The G1 USD in Isaac Lab includes hand-finger joints (43 DoF total). Our
+# reference motion only covers the 29 body joints. Filter everything that
+# touches per-joint data — actions, joint obs, tracking rewards, RSI reset,
+# divergence termination — to this list. Hand fingers stay at default pose.
+_REF_JOINT_NAMES = list(_G1_29DOF_NAMES)
+_ROBOT_29DOF = SceneEntityCfg("robot", joint_names=_REF_JOINT_NAMES)
 
 
 # -----------------------------------------------------------------------------
@@ -56,7 +65,7 @@ class G1SceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     joint_pos = base_mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=[".*"],
+        joint_names=_REF_JOINT_NAMES,
         scale=0.5,
         use_default_offset=True,
     )
@@ -76,8 +85,14 @@ class ObservationsCfg:
         projected_gravity = ObsTerm(
             func=base_mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05)
         )
-        joint_pos = ObsTerm(func=base_mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
-        joint_vel = ObsTerm(func=base_mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        joint_pos = ObsTerm(
+            func=base_mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01),
+            params={"asset_cfg": _ROBOT_29DOF},
+        )
+        joint_vel = ObsTerm(
+            func=base_mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5),
+            params={"asset_cfg": _ROBOT_29DOF},
+        )
         actions = ObsTerm(func=base_mdp.last_action)
         # Motion conditioning
         phase = ObsTerm(func=mdp.motion_phase)
@@ -96,12 +111,15 @@ class ObservationsCfg:
 
 @configclass
 class RewardsCfg:
-    # Tracking (positive)
+    # Tracking (positive). All tracking terms see the same 29-joint view as
+    # the reference motion via the _ROBOT_29DOF entity cfg.
     track_joint_pos = RewTerm(
-        func=mdp.joint_pos_tracking, weight=3.0, params={"sigma": 0.25}
+        func=mdp.joint_pos_tracking, weight=3.0,
+        params={"sigma": 0.25, "asset_cfg": _ROBOT_29DOF},
     )
     track_joint_vel = RewTerm(
-        func=mdp.joint_vel_tracking, weight=1.0, params={"sigma": 5.0}
+        func=mdp.joint_vel_tracking, weight=1.0,
+        params={"sigma": 5.0, "asset_cfg": _ROBOT_29DOF},
     )
     track_root_pos = RewTerm(
         func=mdp.root_pos_tracking, weight=2.0, params={"sigma": 0.5}
@@ -117,11 +135,11 @@ class RewardsCfg:
     )
     alive = RewTerm(func=mdp.alive, weight=0.5)
 
-    # Regularization (negative)
+    # Regularization (negative).
     action_rate = RewTerm(func=base_mdp.action_rate_l2, weight=-0.01)
     torques = RewTerm(
         func=base_mdp.joint_torques_l2, weight=-1.0e-6,
-        params={"asset_cfg": SceneEntityCfg("robot")},
+        params={"asset_cfg": _ROBOT_29DOF},
     )
 
 
@@ -135,7 +153,10 @@ class TerminationsCfg:
     fell = DoneTerm(func=mdp.root_too_low, params={"minimum_height": 0.3})
     diverged = DoneTerm(
         func=mdp.deviated_from_reference,
-        params={"joint_threshold": 1.2, "root_threshold": 0.6},
+        params={
+            "joint_threshold": 1.2, "root_threshold": 0.6,
+            "asset_cfg": _ROBOT_29DOF,
+        },
     )
     finished = DoneTerm(func=mdp.motion_completed, time_out=True)
 
@@ -147,7 +168,10 @@ class TerminationsCfg:
 @configclass
 class EventsCfg:
     # Reset
-    reset_to_ref = EventTerm(func=mdp.reset_to_motion_phase, mode="reset")
+    reset_to_ref = EventTerm(
+        func=mdp.reset_to_motion_phase, mode="reset",
+        params={"asset_cfg": _ROBOT_29DOF},
+    )
     # Domain randomization (light — start here, broaden once tracking works)
     randomize_friction = EventTerm(
         func=base_mdp.randomize_rigid_body_material,

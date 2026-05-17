@@ -54,7 +54,7 @@ def joint_pos_tracking(
 ) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     ref = env.query_reference()
-    err = asset.data.joint_pos - ref["joint_pos"]
+    err = asset.data.joint_pos[:, asset_cfg.joint_ids] - ref["joint_pos"]
     return torch.exp(-(err.pow(2).mean(dim=-1)) / (sigma**2))
 
 
@@ -65,7 +65,7 @@ def joint_vel_tracking(
 ) -> torch.Tensor:
     asset: Articulation = env.scene[asset_cfg.name]
     ref = env.query_reference()
-    err = asset.data.joint_vel - ref["joint_vel"]
+    err = asset.data.joint_vel[:, asset_cfg.joint_ids] - ref["joint_vel"]
     return torch.exp(-(err.pow(2).mean(dim=-1)) / (sigma**2))
 
 
@@ -158,7 +158,7 @@ def deviated_from_reference(
     """
     asset: Articulation = env.scene[asset_cfg.name]
     ref = env.query_reference()
-    j_err = (asset.data.joint_pos - ref["joint_pos"]).pow(2).mean(dim=-1).sqrt()
+    j_err = (asset.data.joint_pos[:, asset_cfg.joint_ids] - ref["joint_pos"]).pow(2).mean(dim=-1).sqrt()
     r_err = ((asset.data.root_pos_w - env.scene.env_origins) - ref["root_pos"]).norm(dim=-1)
     return (j_err > joint_threshold) | (r_err > root_threshold)
 
@@ -200,7 +200,10 @@ def reset_to_motion_phase(
     env.motion_phase[env_ids] = new_phase
 
     ref = env.motion.index(env.motion_phase[env_ids])
-    asset.write_joint_state_to_sim(ref["joint_pos"], ref["joint_vel"], env_ids=env_ids)
+    asset.write_joint_state_to_sim(
+        ref["joint_pos"], ref["joint_vel"],
+        joint_ids=asset_cfg.joint_ids, env_ids=env_ids,
+    )
     root_pose = torch.cat(
         [ref["root_pos"] + env.scene.env_origins[env_ids], ref["root_rot"]],
         dim=-1,

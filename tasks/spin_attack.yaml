@@ -43,12 +43,12 @@ scene:
 #   - track_joint_vel DOWN: pose is mostly static, joint velocity tracking
 #     just adds noise.
 rewards:
-  track_joint_pos: 4.0
+  track_joint_pos: 2.0
   track_joint_vel: 0.3
   track_root_pos: 2.0
   track_root_rot: 4.0
   track_root_lin_vel: 0.0
-  track_root_ang_vel: 4.0
+  track_root_ang_vel: 8.0
   alive: 0.5
   action_rate: -0.01
   torques: -0.000001

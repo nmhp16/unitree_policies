@@ -24,15 +24,16 @@ class G1MotionTrackingEnv(ManagerBasedRLEnv):
     cfg: "G1MotionTrackingEnvCfg"
 
     def __init__(self, cfg, **kwargs):
-        # Load motion reference before super().__init__ so observation and
-        # reward managers can resolve env.motion / env.motion_phase at setup.
+        # Initialize motion + phase + cache BEFORE super().__init__() so the
+        # observation manager can probe term shapes (it calls every obs func
+        # once during setup, which needs env.motion_phase + query_reference()).
         self.motion = _load_motion(
             cfg.motion_path, cfg.motion_fps_override, device=cfg.sim.device
         )
-        super().__init__(cfg=cfg, **kwargs)
-        self.motion_phase = torch.zeros(self.num_envs, device=self.device)
+        self.motion_phase = torch.zeros(cfg.scene.num_envs, device=cfg.sim.device)
         self._ref_cache: dict[str, torch.Tensor] | None = None
         self._ref_cache_step = -1
+        super().__init__(cfg=cfg, **kwargs)
 
     @property
     def step_dt(self) -> float:
@@ -40,9 +41,12 @@ class G1MotionTrackingEnv(ManagerBasedRLEnv):
 
     def query_reference(self) -> dict[str, torch.Tensor]:
         """Per-step cached reference query — all manager terms see the same state."""
-        if self._ref_cache_step != self.common_step_counter:
+        # common_step_counter is only set after super().__init__(); during the
+        # manager's shape-probing pass it doesn't exist yet, so fall back to -1.
+        step = getattr(self, "common_step_counter", -1)
+        if self._ref_cache_step != step:
             self._ref_cache = self.motion.query(self.motion_phase)
-            self._ref_cache_step = self.common_step_counter
+            self._ref_cache_step = step
         return self._ref_cache
 
     def step(self, action):

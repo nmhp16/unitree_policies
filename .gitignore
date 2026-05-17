@@ -1,34 +1,24 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+
+# Virtual envs
+.venv/
 venv/
-logs/
 
-# Trained models (too large for git)
-models/*/v*/
-models/*/*.zip
-models/*/*.pt
+# Training artifacts (checkpoints, TB events, eval videos, run logs)
+outputs/
 
-# But keep config files and README
-!models/**/config.yaml
-!models/**/training_info.json
-!models/**/README.md
+# Cached / downloaded motion data — regenerable
+data/cache/
+data/raw/
 
-# Temporary files
+# Editor / OS
+.vscode/
+.idea/
 *.swp
 *.swo
 *~
 .DS_Store
-
-# IDE
-.vscode/
-.idea/
-*.code-workspace
-
-# TensorBoard
-**/tensorboard/
-events.out.tfevents.*
-
-# Checkpoints (can be large)
-**/checkpoints/*.zip
-**/checkpoints/*.pt

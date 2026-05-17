@@ -34,18 +34,19 @@ args = parser.parse_args()
 app_launcher = AppLauncher(args)
 sim_app = app_launcher.app
 
-import yaml
+import importlib.metadata as metadata
+
 from rsl_rl.runners import OnPolicyRunner
-from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
+from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper, handle_deprecated_rsl_rl_cfg
 
 from unitree_policies.envs.g1_tracking_env import G1MotionTrackingEnv
 from unitree_policies.envs.g1_tracking_env_cfg import G1MotionTrackingEnvCfg
 from unitree_policies.tasks import apply_task_yaml
+from unitree_policies.configs.ppo_cfg import G1PPORunnerCfg
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TASK_DIR = PROJECT_ROOT / "tasks"
-PPO_CFG_PATH = PROJECT_ROOT / "configs" / "ppo_cfg.yaml"
 
 
 def main() -> None:
@@ -65,19 +66,24 @@ def main() -> None:
     )
     env = RslRlVecEnvWrapper(env)
 
-    with open(PPO_CFG_PATH) as f:
-        ppo_cfg = yaml.safe_load(f)
+    agent_cfg = G1PPORunnerCfg()
     if args.max_iterations is not None:
-        ppo_cfg["max_iterations"] = args.max_iterations
+        agent_cfg.max_iterations = args.max_iterations
+    # Migrate cfg fields across rsl-rl version boundaries (drops deprecated
+    # MLP fields like `stochastic` that newer rsl-rl no longer accepts).
+    agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, metadata.version("rsl-rl-lib"))
 
     log_dir = Path(args.log_dir) / args.task
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    runner = OnPolicyRunner(env, ppo_cfg, log_dir=str(log_dir), device=ppo_cfg["device"])
+    runner = OnPolicyRunner(
+        env, agent_cfg.to_dict(),
+        log_dir=str(log_dir), device=agent_cfg.device,
+    )
     if args.checkpoint:
         runner.load(args.checkpoint)
     runner.learn(
-        num_learning_iterations=ppo_cfg["max_iterations"],
+        num_learning_iterations=agent_cfg.max_iterations,
         init_at_random_ep_len=True,
     )
 
