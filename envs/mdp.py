@@ -132,6 +132,30 @@ def alive(env: "G1MotionTrackingEnv") -> torch.Tensor:
     return torch.ones(env.num_envs, device=env.device)
 
 
+def upright(
+    env: "G1MotionTrackingEnv",
+    sigma: float = 0.3,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize tilt of the root body away from world +Z.
+
+    Independent of root_rot_tracking (which only matches yaw for spinning
+    motions) — this term specifically rewards "head up" regardless of yaw.
+    Critical for spin/whirl moves where yaw rotates freely but the body
+    must stay vertical.
+
+    Computes the body's +Z axis in world frame from the root quaternion
+    (w, x, y, z): bz = (2(xz+wy), 2(yz-wx), 1 - 2(x²+y²)). Upright when
+    bz_z == 1; horizontal when bz_z == 0.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    q = asset.data.root_quat_w  # (N, 4) in (w, x, y, z)
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    bz_z = 1.0 - 2.0 * (x.pow(2) + y.pow(2))
+    tilt = (1.0 - bz_z).clamp(min=0.0)  # 0 when upright, 2 when upside-down
+    return torch.exp(-(tilt.pow(2)) / (sigma**2))
+
+
 # -----------------------------------------------------------------------------
 # Terminations
 # -----------------------------------------------------------------------------
@@ -178,6 +202,7 @@ def reset_to_motion_phase(
     env: "G1MotionTrackingEnv",
     env_ids: torch.Tensor,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    curriculum_total_steps: float = 2400.0,
 ):
     """RSI: sample a random phase, snap robot pose to the reference at that phase.
 
@@ -185,18 +210,36 @@ def reset_to_motion_phase(
     starting at t=0, sample uniformly across the clip. Every phase gets equal
     coverage even early in training, so the hard middle/late phases aren't
     bottlenecked on first mastering the easy beginning.
+
+    Phase curriculum: at iter 0 the policy has no idea how to balance from
+    arbitrary mid-spin states. If RSI hands it those states immediately, every
+    episode terminates within ~10 steps and gradient signal is dominated by
+    falls. We progressively grow the sampleable phase range from a tiny window
+    near 0 up to the full clip, scheduled on env.common_step_counter (total
+    simulation steps across all envs). By the time the window reaches 1.0 the
+    policy already knows the easy initial phases and can extend skill outward.
+
+    `curriculum_total_steps` is the env.step() call count at which the window
+    saturates at 1.0. ManagerBasedRLEnv's `common_step_counter` advances by 1
+    per env.step() — i.e. by `num_steps_per_env` per PPO iter. Default 2400 ≈
+    100 PPO iters at num_steps_per_env=24. Set to 0 to disable the curriculum
+    (recovers the original uniform RSI).
     """
     if env_ids is None or len(env_ids) == 0:
         return
     asset: Articulation = env.scene[asset_cfg.name]
     n = len(env_ids)
 
+    if curriculum_total_steps > 0:
+        progress = getattr(env, "common_step_counter", 0) / curriculum_total_steps
+        max_phase = min(1.0, max(0.05, progress))
+    else:
+        max_phase = 1.0
+
     # For non-loopable clips, cap the start phase so each episode has a few
     # steps to play out before motion_completed terminates it.
-    if env.motion.loopable:
-        new_phase = torch.rand(n, device=env.device)
-    else:
-        new_phase = torch.rand(n, device=env.device) * 0.85
+    cap = 1.0 if env.motion.loopable else 0.85
+    new_phase = torch.rand(n, device=env.device) * min(max_phase, cap)
     env.motion_phase[env_ids] = new_phase
 
     ref = env.motion.index(env.motion_phase[env_ids])

@@ -220,11 +220,70 @@ class MotionReference:
         )
 
     @classmethod
+    def synthetic_stand_armsout(
+        cls,
+        duration_s: float = 3.0,
+        fps: float = 60.0,
+        shoulder_roll_out: float = 1.0,
+        elbow_bend: float = 0.0,
+        device: str = "cuda",
+    ) -> "MotionReference":
+        """Static stand pose with arms half-abducted. Curriculum phase 1.
+
+        Same joint pose as `synthetic_spin_attack` (so the obs-space reference
+        targets are identical), but zero root rotation and zero angular
+        velocity — the policy just has to hold pose without falling. Loopable
+        so episodes can use any length without `motion_completed` firing.
+
+        Train this first, then resume the resulting checkpoint on the real
+        spin_attack task. Policy enters phase 2 already knowing how to balance.
+        """
+        T = int(duration_s * fps)
+        names = _G1_29DOF_NAMES
+        J = len(names)
+        jp = torch.zeros(T, J)
+
+        def col(name: str) -> int:
+            return names.index(name)
+
+        jp[:, col("left_hip_pitch_joint")] = -0.10
+        jp[:, col("right_hip_pitch_joint")] = -0.10
+        jp[:, col("left_knee_joint")] = 0.30
+        jp[:, col("right_knee_joint")] = 0.30
+        jp[:, col("left_ankle_pitch_joint")] = -0.20
+        jp[:, col("right_ankle_pitch_joint")] = -0.20
+        jp[:, col("left_shoulder_pitch_joint")] = 1.5708
+        jp[:, col("right_shoulder_pitch_joint")] = 1.5708
+        jp[:, col("left_shoulder_roll_joint")] = shoulder_roll_out
+        jp[:, col("right_shoulder_roll_joint")] = -shoulder_roll_out
+        jp[:, col("left_elbow_joint")] = elbow_bend
+        jp[:, col("right_elbow_joint")] = elbow_bend
+
+        joint_vel = torch.zeros_like(jp)
+        root_pos = torch.zeros(T, 3)
+        root_pos[:, 2] = 0.74
+        root_rot = torch.zeros(T, 4)
+        root_rot[:, 0] = 1.0  # identity quaternion (no yaw)
+        root_lin_vel = torch.zeros(T, 3)
+        root_ang_vel = torch.zeros(T, 3)
+
+        return cls(
+            MotionData(
+                fps=fps, joint_names=names,
+                joint_pos=jp, joint_vel=joint_vel,
+                root_pos=root_pos, root_rot=root_rot,
+                root_lin_vel=root_lin_vel, root_ang_vel=root_ang_vel,
+                loopable=True,
+            ),
+            device=device,
+        )
+
+    @classmethod
     def synthetic_spin_attack(
         cls,
-        seconds_per_revolution: float = 2.0,
+        seconds_per_revolution: float = 3.0,
         fps: float = 60.0,
-        shoulder_roll_out: float = 1.5,
+        shoulder_roll_out: float = 1.0,
         elbow_bend: float = 0.0,
         spin_direction: int = 1,
         device: str = "cuda",
@@ -234,7 +293,9 @@ class MotionReference:
         - Both arms abducted to ~horizontal via shoulder_roll
         - Root yaws at constant angular velocity around the world Z axis
         - Root position stays at standing height; no forward translation
-        - Loopable: one full revolution (phase 0→1) returns to the start pose
+        - Non-loopable: phase 0→1 covers exactly one revolution, then the
+          `motion_completed` termination fires (the move is a one-shot,
+          not "spin forever")
 
         The motion is fully synthetic — no external data. The hardest part for
         the policy isn't matching the pose (easy) but learning to *pivot* on
@@ -243,8 +304,9 @@ class MotionReference:
 
         Args:
             seconds_per_revolution: time for one full 2π yaw revolution
-            shoulder_roll_out: target shoulder_roll abduction (rad).
-                1.5 ≈ 86° (T-pose-ish). Drop to 1.0 for a less wide stance.
+            shoulder_roll_out: target shoulder_roll abduction (rad). Default
+                1.0 ≈ 57° (half-T-pose); bump toward 1.5 ≈ 86° for full T-pose,
+                at the cost of higher moment of inertia about the spin axis.
             elbow_bend: elbow joint angle (rad). 0 = straight arms.
             spin_direction: +1 for counter-clockwise (yaw+), -1 for CW.
         """
@@ -263,7 +325,12 @@ class MotionReference:
         jp[:, col("right_knee_joint")] = 0.30
         jp[:, col("left_ankle_pitch_joint")] = -0.20
         jp[:, col("right_ankle_pitch_joint")] = -0.20
-        # Arms out — left positive roll, right negative roll (G1 mirror conv.)
+        # G1 zero pose has arms horizontal pointing forward (not down). To get
+        # a T-pose (arms straight out to the side), we have to rotate the arms
+        # down 90° via shoulder_pitch first, then abduct outward via shoulder_roll.
+        # left abducts on +roll, right on -roll (mirrored).
+        jp[:, col("left_shoulder_pitch_joint")] = 1.5708   # π/2 → arms down
+        jp[:, col("right_shoulder_pitch_joint")] = 1.5708
         jp[:, col("left_shoulder_roll_joint")] = shoulder_roll_out
         jp[:, col("right_shoulder_roll_joint")] = -shoulder_roll_out
         jp[:, col("left_elbow_joint")] = elbow_bend
@@ -293,7 +360,7 @@ class MotionReference:
                 joint_pos=jp, joint_vel=joint_vel,
                 root_pos=root_pos, root_rot=root_rot,
                 root_lin_vel=root_lin_vel, root_ang_vel=root_ang_vel,
-                loopable=True,
+                loopable=False,
             ),
             device=device,
         )

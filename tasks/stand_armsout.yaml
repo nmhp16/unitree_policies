@@ -1,0 +1,40 @@
+# Stand with arms out — curriculum phase 1 for spin_attack.
+#
+# Static pose. Same arm/leg targets as spin_attack but no rotation. Train this
+# to convergence (~300-500 iters) so the policy has a working balance prior,
+# then resume the resulting checkpoint on spin_attack.yaml.
+#
+# Reward weights deliberately exclude the spin-only terms: track_root_ang_vel
+# is zeroed (reference omega = 0 anyway, so the reward would just be a constant
+# ~4 per step and provide no gradient signal), track_root_rot is dropped to
+# avoid penalising small yaw drifts that the policy hasn't yet learned to
+# correct. Everything else mirrors spin_attack.yaml.
+
+gym_id: Isaac-G1-Tracking-Stand-Armsout-v0
+
+motion:
+  path: synthetic_stand_armsout
+
+episode:
+  length_s: 3.0
+
+scene:
+  num_envs: 4096
+  env_spacing: 3.0
+
+rewards:
+  track_joint_pos: 4.0
+  track_joint_vel: 0.3
+  track_root_pos: 2.0
+  track_root_rot: 0.0       # zero — no rotation target, would just add noise
+  track_root_lin_vel: 1.0
+  track_root_ang_vel: 0.0   # zero — reference is static
+  alive: 2.0
+  upright: 4.0
+  action_rate: -0.01
+  torques: -0.000001
+
+terminations:
+  minimum_height: 0.3
+  joint_threshold: 1.2
+  root_threshold: 0.8

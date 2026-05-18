@@ -58,6 +58,7 @@ class G1MotionTrackingEnv(ManagerBasedRLEnv):
 _SYNTHETIC = {
     "synthetic": MotionReference.synthetic_walk,
     "synthetic_walk": MotionReference.synthetic_walk,
+    "synthetic_stand_armsout": MotionReference.synthetic_stand_armsout,
     "synthetic_spin_attack": MotionReference.synthetic_spin_attack,
     "synthetic_roundhouse_kick": MotionReference.synthetic_roundhouse_kick,
 }

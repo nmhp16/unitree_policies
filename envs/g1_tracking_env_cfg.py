@@ -134,6 +134,7 @@ class RewardsCfg:
         func=mdp.root_ang_vel_tracking, weight=1.0, params={"sigma": 1.5}
     )
     alive = RewTerm(func=mdp.alive, weight=0.5)
+    upright = RewTerm(func=mdp.upright, weight=0.0, params={"sigma": 0.3})
 
     # Regularization (negative).
     action_rate = RewTerm(func=base_mdp.action_rate_l2, weight=-0.01)
