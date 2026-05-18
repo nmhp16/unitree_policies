@@ -1,0 +1,41 @@
+# Wing chun, demo-framed: stand → punch flurry → stand. Designed so the
+# trained policy naturally produces the "fighting move bookended by calm
+# stance" presentation when eval'd from phase=0.
+
+gym_id: Isaac-G1-Tracking-Wing-Chun-Demo-v0
+
+motion:
+  path: synthetic_wing_chun_demo
+
+episode:
+  length_s: 3.0           # one full demo: 0.5s stand + 2s punches + 0.5s stand
+
+scene:
+  num_envs: 4096
+  env_spacing: 2.5
+
+# Reward weights as for wing_chun. The motion's static-bookend frames are
+# already covered by the same chamber pose targets, so no extra terms needed.
+rewards:
+  track_joint_pos: 6.0
+  track_joint_vel: 1.0
+  track_root_pos: 2.0
+  track_root_rot: 4.0
+  track_root_lin_vel: 1.0
+  track_root_ang_vel: 0.5
+  alive: 2.0
+  upright: 4.0
+  action_rate: -0.01
+  torques: -0.000001
+
+terminations:
+  minimum_height: 0.3
+  joint_threshold: 1.2
+  root_threshold: 0.5
+
+# Sim-to-real domain randomization (the env_cfg already enables friction,
+# mass, PD gain, CoM, and push DR — this YAML opts into action latency,
+# which is task-specific because the latency tolerance depends on how
+# time-sensitive the motion is). 2 steps = 0-40 ms at 50 Hz control.
+domain_randomization:
+  action_latency_max_steps: 2

@@ -1,0 +1,39 @@
+# Karate punch: wide stance + alternating jab cycle. Deliberately easier than
+# spin_attack — no foot motion, no rotation, no balance shifts. Target ~95%
+# episode survival. Recognisable as a fighting move despite the simple
+# kinematic recipe.
+
+gym_id: Isaac-G1-Tracking-Karate-Punch-v0
+
+motion:
+  path: synthetic_karate_punch
+
+episode:
+  length_s: 4.0           # two full punch cycles (2s each)
+
+scene:
+  num_envs: 4096
+  env_spacing: 2.5
+
+# Reward weights tuned for static-stance + arm-motion:
+#   - track_joint_pos: HIGHEST — the punch shape IS the move
+#   - track_root_rot HIGH and track_root_lin_vel ON — face forward, no drift
+#   - track_root_ang_vel low — there's no commanded rotation; the term
+#     mostly punishes spurious yaw
+#   - upright HIGH — head-up balance during punches
+rewards:
+  track_joint_pos: 6.0
+  track_joint_vel: 0.3
+  track_root_pos: 2.0
+  track_root_rot: 4.0
+  track_root_lin_vel: 1.0
+  track_root_ang_vel: 0.5
+  alive: 2.0
+  upright: 4.0
+  action_rate: -0.01
+  torques: -0.000001
+
+terminations:
+  minimum_height: 0.3
+  joint_threshold: 1.2
+  root_threshold: 0.5    # tighter than spin: the move stays in place

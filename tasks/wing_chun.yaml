@@ -1,0 +1,38 @@
+# Wing chun chain punches: rapid alternating centerline strikes. Narrow
+# stance, no foot motion, no rotation — kinematically simple, visually busy.
+# Target ~95% episode survival.
+
+gym_id: Isaac-G1-Tracking-Wing-Chun-v0
+
+motion:
+  path: synthetic_wing_chun
+
+episode:
+  length_s: 4.0           # ~8 alternating punches at 2 punches/sec
+
+scene:
+  num_envs: 4096
+  env_spacing: 2.5
+
+# Reward weights tuned for static-stance + fast arm motion:
+#   - track_joint_pos HIGHEST — the punch shape IS the move
+#   - track_joint_vel UP from default — punches are fast, vel tracking helps
+#     the policy hit the rhythm rather than just landing the keyframes
+#   - track_root_rot / track_root_lin_vel keep the body planted forward
+#   - track_root_ang_vel low — no commanded yaw, just penalise drift
+rewards:
+  track_joint_pos: 6.0
+  track_joint_vel: 1.0
+  track_root_pos: 2.0
+  track_root_rot: 4.0
+  track_root_lin_vel: 1.0
+  track_root_ang_vel: 0.5
+  alive: 2.0
+  upright: 4.0
+  action_rate: -0.01
+  torques: -0.000001
+
+terminations:
+  minimum_height: 0.3
+  joint_threshold: 1.2
+  root_threshold: 0.5

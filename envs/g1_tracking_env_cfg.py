@@ -173,23 +173,69 @@ class EventsCfg:
         func=mdp.reset_to_motion_phase, mode="reset",
         params={"asset_cfg": _ROBOT_29DOF},
     )
-    # Domain randomization (light — start here, broaden once tracking works)
+    # Domain randomization. The startup-mode terms run once per env at
+    # construction and bake their values in for that env's lifetime — with
+    # 4096 envs the policy still sees a wide spread of physics within each
+    # iter's rollout buffer. Per-reset mass/gain randomization isn't
+    # well-supported on implicit/DC actuators (CPU-tensor write), so we
+    # stick to startup for those.
     randomize_friction = EventTerm(
         func=base_mdp.randomize_rigid_body_material,
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.7, 1.3),
-            "dynamic_friction_range": (0.7, 1.3),
-            "restitution_range": (0.0, 0.0),
+            "static_friction_range": (0.5, 1.5),
+            "dynamic_friction_range": (0.5, 1.5),
+            "restitution_range": (0.0, 0.05),
             "num_buckets": 64,
         },
     )
+    # ±15% body mass perturbation — covers payload variation (battery,
+    # cabling, hand attachments) and minor wear on real hardware.
+    randomize_mass = EventTerm(
+        func=base_mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "mass_distribution_params": (0.85, 1.15),
+            "operation": "scale",
+            "distribution": "uniform",
+            "recompute_inertia": True,
+        },
+    )
+    # ±30% PD gain perturbation — emulates real motor stiffness/damping
+    # ripple, friction, and torque deadband that the implicit-actuator
+    # sim treats as perfect.
+    randomize_actuator_gains = EventTerm(
+        func=base_mdp.randomize_actuator_gains,
+        mode="startup",
+        params={
+            "asset_cfg": _ROBOT_29DOF,
+            "stiffness_distribution_params": (0.7, 1.3),
+            "damping_distribution_params": (0.7, 1.3),
+            "operation": "scale",
+            "distribution": "uniform",
+        },
+    )
+    # Center-of-mass shift per body — covers battery/cable placement
+    # variance, mounted attachments, and inertia model errors. ±3cm is
+    # roughly the deviation between Unitree's spec'd CoM and a real
+    # G1 with a payload swap.
+    randomize_com = EventTerm(
+        func=base_mdp.randomize_rigid_body_com,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "com_range": {"x": (-0.03, 0.03), "y": (-0.03, 0.03), "z": (-0.01, 0.01)},
+        },
+    )
+    # Random pushes during episodes — proxy for unmodelled disturbances
+    # (foot scuffing, contact glitches, slight ground non-flatness).
     push_robot = EventTerm(
         func=base_mdp.push_by_setting_velocity,
         mode="interval",
-        interval_range_s=(10.0, 15.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+        interval_range_s=(5.0, 10.0),
+        params={"velocity_range": {"x": (-0.6, 0.6), "y": (-0.6, 0.6)}},
     )
 
 
@@ -203,6 +249,14 @@ class G1MotionTrackingEnvCfg(ManagerBasedRLEnvCfg):
     # (see envs.g1_tracking_env._load_motion); otherwise this is an NPZ path.
     motion_path: str = "synthetic"
     motion_fps_override: float | None = None
+
+    # Action latency for sim-to-real robustness. Each env's action is held in
+    # a FIFO buffer and applied N steps later, where N is sampled uniformly
+    # from [0, action_latency_max_steps] at startup (re-sampled on reset).
+    # At 50 Hz control, 0 → no delay; 1 → 20 ms; 2 → 40 ms. Real G1 actuator
+    # round-trip is ~5-20 ms, so max_steps=2 covers it. 0 disables the
+    # mechanism (zero overhead, identical to the pre-latency env).
+    action_latency_max_steps: int = 0
 
     scene: G1SceneCfg = G1SceneCfg(num_envs=4096, env_spacing=2.5)
     observations: ObservationsCfg = ObservationsCfg()

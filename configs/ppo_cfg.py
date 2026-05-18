@@ -19,7 +19,7 @@ from isaaclab_rl.rsl_rl import (
 class G1PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 8000
-    save_interval = 200
+    save_interval = 50
     experiment_name = "g1_tracking"
     empirical_normalization = False  # use per-model obs_normalization
 

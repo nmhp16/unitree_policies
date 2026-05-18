@@ -58,6 +58,14 @@ def apply_task_yaml(cfg: G1MotionTrackingEnvCfg, yaml_path: str | Path) -> G1Mot
     ep = spec.get("episode", {})
     cfg.episode_length_s = ep.get("length_s", cfg.episode_length_s)
 
+    # Domain-randomization knob (action latency). Set
+    #     domain_randomization:
+    #       action_latency_max_steps: 2
+    # in a task YAML to enable; defaults to 0 (no latency).
+    dr = spec.get("domain_randomization", {}) or {}
+    if "action_latency_max_steps" in dr:
+        cfg.action_latency_max_steps = int(dr["action_latency_max_steps"])
+
     # Reward weights — overlay onto whatever the default cfg has
     for term_name, weight in (spec.get("rewards", {}) or {}).items():
         if hasattr(cfg.rewards, term_name):

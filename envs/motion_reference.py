@@ -151,6 +151,52 @@ class MotionReference:
         return cls(_motion_from_npz(data), device=device)
 
     @classmethod
+    def _pack_motion(
+        cls,
+        jp: torch.Tensor,
+        fps: float,
+        *,
+        loopable: bool,
+        device: str,
+        standing_height: float = 0.74,
+        root_pos: torch.Tensor | None = None,
+        root_rot: torch.Tensor | None = None,
+        root_lin_vel: torch.Tensor | None = None,
+        root_ang_vel: torch.Tensor | None = None,
+    ) -> "MotionReference":
+        """Shared builder for the synthetic_* recipes.
+
+        Defaults model an in-place stand at `standing_height` with identity
+        orientation and zero root velocities — pass any of root_pos/root_rot/
+        root_lin_vel/root_ang_vel to override. joint_vel is always finite-diffed
+        from jp; static poses produce zeros (matching the original manual init).
+        """
+        T = jp.shape[0]
+        joint_vel = torch.zeros_like(jp)
+        joint_vel[1:] = (jp[1:] - jp[:-1]) * fps
+        joint_vel[0] = joint_vel[1]
+        if root_pos is None:
+            root_pos = torch.zeros(T, 3)
+            root_pos[:, 2] = standing_height
+        if root_rot is None:
+            root_rot = torch.zeros(T, 4)
+            root_rot[:, 0] = 1.0  # identity quat (wxyz)
+        if root_lin_vel is None:
+            root_lin_vel = torch.zeros(T, 3)
+        if root_ang_vel is None:
+            root_ang_vel = torch.zeros(T, 3)
+        return cls(
+            MotionData(
+                fps=fps, joint_names=_G1_29DOF_NAMES,
+                joint_pos=jp, joint_vel=joint_vel,
+                root_pos=root_pos, root_rot=root_rot,
+                root_lin_vel=root_lin_vel, root_ang_vel=root_ang_vel,
+                loopable=loopable,
+            ),
+            device=device,
+        )
+
+    @classmethod
     def synthetic_walk(
         cls,
         duration_s: float = 2.0,
@@ -194,29 +240,16 @@ class MotionReference:
         jp[:, col("left_elbow_joint")] = 0.3
         jp[:, col("right_elbow_joint")] = 0.3
 
-        joint_vel = torch.zeros_like(jp)
-        joint_vel[1:] = (jp[1:] - jp[:-1]) * fps
-        joint_vel[0] = joint_vel[1]
-
         # Root: advance at 0.8 m/s in +x, small z bob
         root_pos = torch.zeros(T, 3)
         root_pos[:, 0] = 0.8 * t
         root_pos[:, 2] = 0.74 + 0.02 * torch.cos(2 * phase)
-        root_rot = torch.zeros(T, 4)
-        root_rot[:, 0] = 1.0  # identity quat (wxyz)
         root_lin_vel = torch.zeros(T, 3)
         root_lin_vel[:, 0] = 0.8
-        root_ang_vel = torch.zeros(T, 3)
 
-        return cls(
-            MotionData(
-                fps=fps, joint_names=names,
-                joint_pos=jp, joint_vel=joint_vel,
-                root_pos=root_pos, root_rot=root_rot,
-                root_lin_vel=root_lin_vel, root_ang_vel=root_ang_vel,
-                loopable=True,
-            ),
-            device=device,
+        return cls._pack_motion(
+            jp, fps, loopable=True, device=device,
+            root_pos=root_pos, root_lin_vel=root_lin_vel,
         )
 
     @classmethod
@@ -259,23 +292,201 @@ class MotionReference:
         jp[:, col("left_elbow_joint")] = elbow_bend
         jp[:, col("right_elbow_joint")] = elbow_bend
 
-        joint_vel = torch.zeros_like(jp)
-        root_pos = torch.zeros(T, 3)
-        root_pos[:, 2] = 0.74
-        root_rot = torch.zeros(T, 4)
-        root_rot[:, 0] = 1.0  # identity quaternion (no yaw)
-        root_lin_vel = torch.zeros(T, 3)
-        root_ang_vel = torch.zeros(T, 3)
+        return cls._pack_motion(jp, fps, loopable=True, device=device)
 
-        return cls(
-            MotionData(
-                fps=fps, joint_names=names,
-                joint_pos=jp, joint_vel=joint_vel,
-                root_pos=root_pos, root_rot=root_rot,
-                root_lin_vel=root_lin_vel, root_ang_vel=root_ang_vel,
-                loopable=True,
-            ),
-            device=device,
+    @classmethod
+    def synthetic_wing_chun(
+        cls,
+        cycle_s: float = 1.0,
+        fps: float = 60.0,
+        stance_hip_roll: float = 0.10,
+        knee_bend: float = 0.35,
+        device: str = "cuda",
+    ) -> "MotionReference":
+        """Wing chun chain punches: rapid alternating centerline strikes.
+
+        Narrow vertical stance (feet roughly hip-width, slight knee bend),
+        arms chamber at the chest, then drive forward to the centerline in
+        rapid alternation. One full cycle (R-L) is 1s by default — twice the
+        rate of `synthetic_karate_punch`. Loopable.
+
+        Kinematically simple (no foot motion, no rotation) but visually busy
+        because each cycle covers two punches. Target ~95% episode survival.
+        """
+        T = int(cycle_s * fps)
+        names = _G1_29DOF_NAMES
+        J = len(names)
+        jp = torch.zeros(T, J)
+
+        def col(name: str) -> int:
+            return names.index(name)
+
+        # Lower body: narrow stance, light crouch — held static.
+        jp[:, col("left_hip_pitch_joint")] = -0.15
+        jp[:, col("right_hip_pitch_joint")] = -0.15
+        jp[:, col("left_hip_roll_joint")] = stance_hip_roll
+        jp[:, col("right_hip_roll_joint")] = -stance_hip_roll
+        jp[:, col("left_knee_joint")] = knee_bend
+        jp[:, col("right_knee_joint")] = knee_bend
+        jp[:, col("left_ankle_pitch_joint")] = -0.20
+        jp[:, col("right_ankle_pitch_joint")] = -0.20
+
+        # Upper body: rapid alternating chamber→extend.
+        # Chamber: arm tucked near chest — shoulder_pitch=1.0, elbow=2.2.
+        # Extended: arm forward at centerline — shoulder_pitch=0.4, elbow=0.5,
+        # shoulder_roll pulled slightly inward so punches converge on centerline.
+        t = torch.linspace(0, 1, T)
+        right_punch = torch.sin(torch.pi * (t / 0.5).clamp(max=1.0)).clamp(min=0.0)
+        right_punch[t > 0.5] = 0.0
+        left_punch = torch.sin(torch.pi * ((t - 0.5) / 0.5).clamp(min=0.0))
+        left_punch[t <= 0.5] = 0.0
+
+        jp[:, col("right_shoulder_pitch_joint")] = 1.0 - 0.6 * right_punch
+        jp[:, col("right_shoulder_roll_joint")] = -0.15 * right_punch
+        jp[:, col("right_elbow_joint")] = 2.2 - 1.7 * right_punch
+        jp[:, col("left_shoulder_pitch_joint")] = 1.0 - 0.6 * left_punch
+        jp[:, col("left_shoulder_roll_joint")] = 0.15 * left_punch
+        jp[:, col("left_elbow_joint")] = 2.2 - 1.7 * left_punch
+
+        return cls._pack_motion(
+            jp, fps, loopable=True, device=device, standing_height=0.72,
+        )
+
+    @classmethod
+    def synthetic_wing_chun_demo(
+        cls,
+        total_s: float = 3.0,
+        hold_s: float = 0.5,
+        fps: float = 60.0,
+        stance_hip_roll: float = 0.10,
+        knee_bend: float = 0.35,
+        device: str = "cuda",
+    ) -> "MotionReference":
+        """Wing chun, demo-framed: stand → punch flurry → stand.
+
+        Designed for portfolio-style eval where the robot enters a fighting
+        stance, executes a rapid punch flurry, then settles back into the
+        stance. Non-loopable; the episode terminates when the motion ends.
+
+        Structure (default 3s total / 0.5s holds):
+          [0.00, 0.17) — hold chamber stance (static)
+          [0.17, 0.83) — wing chun punch cycles (two R-L pairs)
+          [0.83, 1.00] — hold chamber stance (static)
+
+        Training on this directly (rather than punch-forever) means the policy
+        learns the static-to-moving and moving-to-static transitions, so
+        eval rollouts naturally bookend the action with calm stance.
+        """
+        T = int(total_s * fps)
+        hold_T = int(hold_s * fps)
+        names = _G1_29DOF_NAMES
+        J = len(names)
+        jp = torch.zeros(T, J)
+
+        def col(name: str) -> int:
+            return names.index(name)
+
+        # Lower body: narrow stance, light crouch — held throughout.
+        jp[:, col("left_hip_pitch_joint")] = -0.15
+        jp[:, col("right_hip_pitch_joint")] = -0.15
+        jp[:, col("left_hip_roll_joint")] = stance_hip_roll
+        jp[:, col("right_hip_roll_joint")] = -stance_hip_roll
+        jp[:, col("left_knee_joint")] = knee_bend
+        jp[:, col("right_knee_joint")] = knee_bend
+        jp[:, col("left_ankle_pitch_joint")] = -0.20
+        jp[:, col("right_ankle_pitch_joint")] = -0.20
+
+        # Upper body: chamber throughout (default), overridden during the
+        # action window with the same chamber→extend cycle as synthetic_wing_chun.
+        jp[:, col("right_shoulder_pitch_joint")] = 1.0
+        jp[:, col("right_elbow_joint")] = 2.2
+        jp[:, col("left_shoulder_pitch_joint")] = 1.0
+        jp[:, col("left_elbow_joint")] = 2.2
+
+        # Action window: [hold_T, T - hold_T). Within it, run two R-L cycles
+        # so the burst feels deliberate rather than a single jab.
+        action_start = hold_T
+        action_end = T - hold_T
+        action_T = action_end - action_start
+        if action_T > 0:
+            t = torch.linspace(0, 1, action_T)
+            cycles = 2.0
+            cycle_t = (t * cycles) % 1.0
+            right_punch = torch.sin(torch.pi * (cycle_t / 0.5).clamp(max=1.0)).clamp(min=0.0)
+            right_punch[cycle_t > 0.5] = 0.0
+            left_punch = torch.sin(torch.pi * ((cycle_t - 0.5) / 0.5).clamp(min=0.0))
+            left_punch[cycle_t <= 0.5] = 0.0
+
+            jp[action_start:action_end, col("right_shoulder_pitch_joint")] = 1.0 - 0.6 * right_punch
+            jp[action_start:action_end, col("right_shoulder_roll_joint")] = -0.15 * right_punch
+            jp[action_start:action_end, col("right_elbow_joint")] = 2.2 - 1.7 * right_punch
+            jp[action_start:action_end, col("left_shoulder_pitch_joint")] = 1.0 - 0.6 * left_punch
+            jp[action_start:action_end, col("left_shoulder_roll_joint")] = 0.15 * left_punch
+            jp[action_start:action_end, col("left_elbow_joint")] = 2.2 - 1.7 * left_punch
+
+        return cls._pack_motion(
+            jp, fps, loopable=False, device=device, standing_height=0.72,
+        )
+
+    @classmethod
+    def synthetic_karate_punch(
+        cls,
+        cycle_s: float = 2.0,
+        fps: float = 60.0,
+        stance_hip_roll: float = 0.25,
+        knee_bend: float = 0.6,
+        device: str = "cuda",
+    ) -> "MotionReference":
+        """Karate stance + alternating jab punches.
+
+        A static lower-body fighting stance (wide legs, knees bent) plus an
+        alternating upper-body punch cycle: right arm extends forward, returns
+        to chamber at hip, then left arm extends, then returns. Loopable.
+
+        Deliberately easier than spin_attack: no foot motion, no rotation, no
+        balance shifts. Convergence target is ~95% episode survival. The move
+        is recognisable as a martial arts demo despite using only the
+        DeepMimic-style tracking pipeline.
+        """
+        T = int(cycle_s * fps)
+        names = _G1_29DOF_NAMES
+        J = len(names)
+        jp = torch.zeros(T, J)
+
+        def col(name: str) -> int:
+            return names.index(name)
+
+        # Lower body: held static wide stance throughout the cycle.
+        jp[:, col("left_hip_pitch_joint")] = -0.25
+        jp[:, col("right_hip_pitch_joint")] = -0.25
+        jp[:, col("left_hip_roll_joint")] = stance_hip_roll
+        jp[:, col("right_hip_roll_joint")] = -stance_hip_roll
+        jp[:, col("left_knee_joint")] = knee_bend
+        jp[:, col("right_knee_joint")] = knee_bend
+        jp[:, col("left_ankle_pitch_joint")] = -0.35
+        jp[:, col("right_ankle_pitch_joint")] = -0.35
+
+        # Upper body: arms cycle between chambered-at-hip and forward-punch.
+        # Chambered:  shoulder_pitch = 1.57 (arm down), elbow = 2.0 (folded)
+        # Punching:   shoulder_pitch = 0.5  (arm forward), elbow = 0.0 (extended)
+        # Right arm leads (phase 0→0.5), left arm follows (phase 0.5→1.0).
+        t = torch.linspace(0, 1, T)
+        # Smooth half-sine that goes 0 → 1 → 0 over [0, 0.5] phase window
+        # (and 0 → 1 → 0 over [0.5, 1.0] for the other arm).
+        right_punch = torch.sin(torch.pi * (t / 0.5).clamp(max=1.0)).clamp(min=0.0)
+        right_punch[t > 0.5] = 0.0
+        left_punch = torch.sin(torch.pi * ((t - 0.5) / 0.5).clamp(min=0.0))
+        left_punch[t <= 0.5] = 0.0
+
+        # Right arm: 1.57 (chambered) → 0.5 (forward), so pitch decreases as punch.
+        jp[:, col("right_shoulder_pitch_joint")] = 1.57 - 1.07 * right_punch
+        jp[:, col("right_elbow_joint")] = 2.0 - 2.0 * right_punch
+        jp[:, col("left_shoulder_pitch_joint")] = 1.57 - 1.07 * left_punch
+        jp[:, col("left_elbow_joint")] = 2.0 - 2.0 * left_punch
+
+        # standing_height=0.70: slightly lower due to crouch
+        return cls._pack_motion(
+            jp, fps, loopable=True, device=device, standing_height=0.70,
         )
 
     @classmethod
@@ -336,12 +547,6 @@ class MotionReference:
         jp[:, col("left_elbow_joint")] = elbow_bend
         jp[:, col("right_elbow_joint")] = elbow_bend
 
-        joint_vel = torch.zeros_like(jp)  # static pose → zero target joint vel
-
-        # Root: stay in place at standing height
-        root_pos = torch.zeros(T, 3)
-        root_pos[:, 2] = 0.74
-
         # Root yaw: constant angular velocity around world Z
         omega = spin_direction * 2.0 * torch.pi / seconds_per_revolution
         t = torch.linspace(0, seconds_per_revolution, T)
@@ -349,20 +554,12 @@ class MotionReference:
         root_rot = torch.zeros(T, 4)
         root_rot[:, 0] = (yaw * 0.5).cos()      # w
         root_rot[:, 3] = (yaw * 0.5).sin()      # z (rotation around Z axis only)
-
-        root_lin_vel = torch.zeros(T, 3)         # no translation
         root_ang_vel = torch.zeros(T, 3)
         root_ang_vel[:, 2] = omega              # constant yaw rate
 
-        return cls(
-            MotionData(
-                fps=fps, joint_names=names,
-                joint_pos=jp, joint_vel=joint_vel,
-                root_pos=root_pos, root_rot=root_rot,
-                root_lin_vel=root_lin_vel, root_ang_vel=root_ang_vel,
-                loopable=False,
-            ),
-            device=device,
+        return cls._pack_motion(
+            jp, fps, loopable=False, device=device,
+            root_rot=root_rot, root_ang_vel=root_ang_vel,
         )
 
     @classmethod
@@ -436,32 +633,11 @@ class MotionReference:
         # Slight torso yaw to load the kick rotation
         jp[:, col("waist_yaw_joint")] += bump * (sign * 0.20)
 
-        # Velocities: finite diff (kick has rapid motion — vel tracking matters)
-        joint_vel = torch.zeros_like(jp)
-        joint_vel[1:] = (jp[1:] - jp[:-1]) * fps
-        joint_vel[0] = joint_vel[1]
-
-        # Root: stays in place, identity orientation. The kicking leg moves,
+        # Root stays in place, identity orientation. The kicking leg moves,
         # not the body. (Real kicks DO involve torso translation/rotation, but
         # keeping root pose fixed is a deliberate simplification — gives the
         # policy something concrete to anchor to. Loosen later if needed.)
-        root_pos = torch.zeros(T, 3)
-        root_pos[:, 2] = 0.74
-        root_rot = torch.zeros(T, 4)
-        root_rot[:, 0] = 1.0
-        root_lin_vel = torch.zeros(T, 3)
-        root_ang_vel = torch.zeros(T, 3)
-
-        return cls(
-            MotionData(
-                fps=fps, joint_names=names,
-                joint_pos=jp, joint_vel=joint_vel,
-                root_pos=root_pos, root_rot=root_rot,
-                root_lin_vel=root_lin_vel, root_ang_vel=root_ang_vel,
-                loopable=False,
-            ),
-            device=device,
-        )
+        return cls._pack_motion(jp, fps, loopable=False, device=device)
 
 
 def _motion_from_npz(data) -> MotionData:
